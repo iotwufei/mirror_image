@@ -23,7 +23,7 @@ struct DiffView: View {
                 case .image:
                     ImageDiffView(viewModel: viewModel, files: allFiles)
                 case .video:
-                    VideoDiffView(viewModel: viewModel, files: allFiles)
+                    VideoDiffView(viewModel: viewModel, files: allFiles, videoController: videoController)
                 }
             }
 

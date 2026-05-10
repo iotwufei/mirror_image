@@ -15,7 +15,7 @@ final class ImageLayerController {
     func createLayer(with image: CGImage, frame targetFrame: CGRect) -> CALayer {
         let layer = CALayer()
         layer.contents = image
-        layer.contentsGravity = .resizeAspectFill
+        layer.contentsGravity = .resizeAspect
         layer.masksToBounds = true
         layer.frame = targetFrame
         layer.edgeAntialiasingMask = [.layerLeftEdge, .layerRightEdge, .layerTopEdge, .layerBottomEdge]

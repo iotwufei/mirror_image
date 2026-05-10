@@ -11,15 +11,18 @@ final class VideoLayerController: NSObject {
     var controlMode: VideoControlMode = .synchronized
     var isPlaying: Bool { !players.isEmpty && players.allSatisfy { $0.rate > 0 } }
 
-    func createLayers(for urls: [URL], frames: [CGRect]) -> [AVPlayerLayer] {
+    func createLayers(for urls: [URL], sizes: [CGSize]) -> [AVPlayerLayer] {
         cleanup()
+
+        currentURLs = urls
 
         var layers: [AVPlayerLayer] = []
         for (index, url) in urls.enumerated() {
             let player = AVPlayer(url: url)
             let layer = AVPlayerLayer(player: player)
-            layer.videoGravity = .resizeAspectFill
-            layer.frame = index < frames.count ? frames[index] : .zero
+            layer.videoGravity = .resizeAspect
+            let size = index < sizes.count ? sizes[index] : .zero
+            layer.frame = CGRect(origin: .zero, size: size)
             layer.masksToBounds = true
 
             player.isMuted = false
@@ -32,16 +35,35 @@ final class VideoLayerController: NSObject {
         return layers
     }
 
+    var playerLayerCount: Int { playerLayers.count }
+
+    private(set) var currentURLs: [URL] = []
+
     func addToSuperlayer(for layers: [AVPlayerLayer], parent: CALayer) {
         for layer in layers {
             parent.addSublayer(layer)
         }
     }
 
-    func playAll() {
-        let cmTime = CMTime.zero
+    func seekAllToStart() {
+        let zero = CMTime.zero
         for player in players {
-            player.seek(to: cmTime, toleranceBefore: .zero, toleranceAfter: .zero)
+            player.seek(to: zero, toleranceBefore: .zero, toleranceAfter: .zero)
+        }
+    }
+
+    func playAll() {
+        let atEnd = players.allSatisfy {
+            guard let duration = $0.currentItem?.duration, duration.isNumeric else { return true }
+            return CMTimeCompare($0.currentTime(), duration) >= 0
+        }
+        if atEnd {
+            let zero = CMTime.zero
+            for player in players {
+                player.seek(to: zero, toleranceBefore: .zero, toleranceAfter: .zero)
+            }
+        }
+        for player in players {
             player.play()
         }
     }

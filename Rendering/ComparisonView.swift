@@ -16,6 +16,10 @@ final class ComparisonView: NSView {
     private var dragLayerIndex: Int? = nil
     private var showHistograms: Bool = false
     private var pendingImages: [(CGImage, CGSize)] = []
+    private var pendingVideoURLs: [URL] = []
+    private var pendingVideoController: VideoLayerController?
+    private var isVideoMode: Bool = false
+    private var currentVideoURLs: [URL] = []
 
     var onGroupNavigation: ((Bool) -> Void)?
     var onToggleHistogram: (() -> Void)?
@@ -46,6 +50,27 @@ final class ComparisonView: NSView {
         clearAllLayers()
         currentGroup = group
         pendingImages = []
+        pendingVideoURLs = []
+        pendingVideoController = nil
+        isVideoMode = false
+        dragLayerIndex = nil
+        zoomController.reset()
+        needsLayout = true
+    }
+
+    func loadVideoGroup(_ group: ComparisonGroup, urls: [URL], controller: VideoLayerController) {
+        if isVideoMode, currentVideoURLs == urls {
+            currentGroup = group
+            needsLayout = true
+            return
+        }
+
+        clearAllLayers()
+        currentGroup = group
+        pendingImages = []
+        pendingVideoURLs = urls
+        pendingVideoController = controller
+        isVideoMode = true
         dragLayerIndex = nil
         zoomController.reset()
         needsLayout = true
@@ -67,6 +92,7 @@ final class ComparisonView: NSView {
         videoLayers.removeAll()
         histogramOverlays.forEach { $0.removeFromSuperlayer() }
         histogramOverlays.removeAll()
+        currentVideoURLs = []
     }
 
     func toggleHistograms() {
@@ -88,24 +114,48 @@ final class ComparisonView: NSView {
 
     func applyImageLayout(images: [(CGImage, CGSize)]) {
         pendingImages = images
+        pendingVideoURLs = []
+        pendingVideoController = nil
+        isVideoMode = false
         relayoutLayers()
     }
 
-    private func relayoutLayers() {
-        guard !pendingImages.isEmpty else { return }
+    override func layout() {
+        super.layout()
+        relayoutLayers()
+        applyLayerTransforms()
+    }
 
+    private func relayoutLayers() {
         let parentBounds = bounds
         guard parentBounds.width > 0, parentBounds.height > 0 else { return }
 
-        let count = pendingImages.count
-        let frames = layoutEngine.frames(for: count, in: parentBounds)
+        if isVideoMode, let controller = pendingVideoController {
+            relayoutVideoLayers(urls: pendingVideoURLs, controller: controller, in: parentBounds)
+            return
+        }
 
         clipLayers.forEach { $0.removeFromSuperlayer() }
         clipLayers.removeAll()
         imageLayers.forEach { $0.removeFromSuperlayer() }
         imageLayers.removeAll()
+        videoLayers.forEach {
+            $0.player?.pause()
+            $0.player = nil
+            $0.removeFromSuperlayer()
+        }
+        videoLayers.removeAll()
         histogramOverlays.forEach { $0.removeFromSuperlayer() }
         histogramOverlays.removeAll()
+
+        if !pendingImages.isEmpty {
+            relayoutImageLayers(in: parentBounds)
+        }
+    }
+
+    private func relayoutImageLayers(in parentBounds: CGRect) {
+        let count = pendingImages.count
+        let frames = layoutEngine.frames(for: count, in: parentBounds)
 
         for (index, (image, _)) in pendingImages.enumerated() {
             guard index < frames.count else { break }
@@ -114,14 +164,10 @@ final class ComparisonView: NSView {
             let clipLayer = CALayer()
             clipLayer.frame = clipFrame
             clipLayer.masksToBounds = true
-            clipLayer.backgroundColor = nil
             self.layer?.addSublayer(clipLayer)
             clipLayers.append(clipLayer)
 
-            let imageLayer = imageController.createLayer(
-                with: image,
-                frame: clipLayer.bounds
-            )
+            let imageLayer = imageController.createLayer(with: image, frame: clipLayer.bounds)
             clipLayer.addSublayer(imageLayer)
             imageLayers.append(imageLayer)
 
@@ -134,10 +180,55 @@ final class ComparisonView: NSView {
         }
     }
 
-    override func layout() {
-        super.layout()
-        relayoutLayers()
-        applyLayerTransforms()
+    private func relayoutVideoLayers(urls: [URL], controller: VideoLayerController, in parentBounds: CGRect) {
+        let count = urls.count
+        let frames = layoutEngine.frames(for: count, in: parentBounds)
+
+        var layers: [AVPlayerLayer]
+
+        if currentVideoURLs != urls {
+            clipLayers.forEach { $0.removeFromSuperlayer() }
+            clipLayers.removeAll()
+            videoLayers.forEach {
+                $0.player?.pause()
+                $0.player = nil
+                $0.removeFromSuperlayer()
+            }
+            videoLayers.removeAll()
+            histogramOverlays.forEach { $0.removeFromSuperlayer() }
+            histogramOverlays.removeAll()
+
+            layers = controller.createLayers(for: urls, sizes: frames.map { $0.size })
+            currentVideoURLs = urls
+            controller.seekAllToStart()
+        } else {
+            layers = videoLayers
+            clipLayers.forEach { $0.removeFromSuperlayer() }
+            clipLayers.removeAll()
+        }
+
+        for (index, layer) in layers.enumerated() {
+            guard index < frames.count else { break }
+            let clipFrame = frames[index]
+
+            let clipLayer = CALayer()
+            clipLayer.frame = clipFrame
+            clipLayer.masksToBounds = true
+            self.layer?.addSublayer(clipLayer)
+            clipLayers.append(clipLayer)
+
+            layer.frame = clipLayer.bounds
+            if layer.superlayer == nil {
+                clipLayer.addSublayer(layer)
+            } else {
+                layer.removeFromSuperlayer()
+                clipLayer.addSublayer(layer)
+            }
+        }
+
+        if !layers.isEmpty, videoLayers.isEmpty {
+            videoLayers = layers
+        }
     }
 
     func applyZoom(layerIndex: Int? = nil, factor: CGFloat? = nil) {
@@ -240,8 +331,8 @@ final class ComparisonView: NSView {
 
     @objc private func handleClick(_ gesture: NSClickGestureRecognizer) {
         let point = gesture.location(in: self)
-        for (index, layer) in videoLayers.enumerated() {
-            if layer.frame.contains(point) {
+        for (index, clipLayer) in clipLayers.enumerated() {
+            if clipLayer.frame.contains(point) {
                 onToggleLayerVisibility?(index)
                 return
             }
@@ -281,20 +372,15 @@ final class ComparisonView: NSView {
         switch event.keyCode {
         case 49:
             onGroupNavigation?(true)
-
         case 11:
             onGroupNavigation?(false)
-
         case 4:
             onToggleHistogram?()
-
         case 18...29:
             let index = Int(event.keyCode) - 18
             onToggleLayerVisibility?(index)
-
         case 53:
             onExit?()
-
         default:
             super.keyDown(with: event)
         }
