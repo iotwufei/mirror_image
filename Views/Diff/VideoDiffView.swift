@@ -16,6 +16,9 @@ struct VideoDiffView: NSViewRepresentable {
         view.onZoomChanged = { zoom in
             viewModel.globalZoom = zoom
         }
+        view.onToggleInfo = {
+            viewModel.showInfo.toggle()
+        }
 
         return view
     }

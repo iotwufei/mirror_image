@@ -113,7 +113,8 @@ final class HomeViewModel: ObservableObject {
             let resolvedItem = FileItem(
                 url: item.url,
                 dimensions: metadata.dimensions,
-                duration: metadata.duration
+                duration: metadata.duration,
+                cameraModel: metadata.cameraModel
             )
             resolved.append(resolvedItem)
         }

@@ -54,6 +54,10 @@ struct DiffView: View {
             viewModel.showHistogram.toggle()
             return .handled
         }
+        .onKeyPress(KeyEquivalent("i")) {
+            viewModel.showInfo.toggle()
+            return .handled
+        }
         .onKeyPress(.escape) {
             if let window = NSApp.keyWindow, window.styleMask.contains(.fullScreen) {
                 window.toggleFullScreen(nil)
@@ -97,6 +101,11 @@ struct DiffView: View {
                     .padding(.vertical, 8)
                     .background(Color.black.opacity(0.75))
                     .cornerRadius(6)
+            }
+        }
+        .overlay(alignment: .topLeading) {
+            if viewModel.showInfo, let group = viewModel.currentGroup {
+                infoOverlay(for: group)
             }
         }
     }
@@ -166,10 +175,50 @@ struct DiffView: View {
 
     private var keyboardHints: String {
         if mode == .video {
-            return "Space: Play/Pause  |  \u{2190}\u{2192}: Seek  |  B: Prev  |  Cmd+Space: Next  |  Q: Align  |  H: Histogram  |  Esc: Exit"
+            return "Space: Play/Pause  |  \u{2190}\u{2192}: Seek  |  B: Prev  |  Cmd+Space: Next  |  Q: Align  |  H: Histogram  |  I: Info  |  Esc: Exit"
         } else {
-            return "Space: Next  |  B: Prev  |  1-9: Toggle  |  H: Histogram  |  Esc: Exit  |  Scroll: Zoom  |  Cmd+Scroll: Solo Zoom"
+            return "Space: Next  |  B: Prev  |  1-9: Toggle  |  H: Histogram  |  I: Info  |  Esc: Exit  |  Scroll: Zoom  |  Cmd+Scroll: Solo Zoom"
         }
+    }
+
+    @ViewBuilder
+    private func infoOverlay(for group: ComparisonGroup) -> some View {
+        GeometryReader { geometry in
+            let frames = ComparisonViewLayout.default.frames(for: group.files.count, in: CGRect(origin: .zero, size: geometry.size))
+            ForEach(Array(group.files.enumerated()), id: \.element.id) { index, file in
+                if index < frames.count {
+                    let frame = frames[index]
+                    ZStack(alignment: .topLeading) {
+                        Color.clear
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(file.name)
+                                .font(.system(size: 11, weight: .semibold))
+                                .lineLimit(1)
+                            HStack(spacing: 8) {
+                                if let dims = file.dimensions {
+                                    Text("\(Int(dims.width))\u{00D7}\(Int(dims.height))")
+                                }
+                                Text(file.formattedFileSize)
+                                if let cam = file.cameraModel {
+                                    Text(cam)
+                                        .lineLimit(1)
+                                }
+                            }
+                            .font(.system(size: 10))
+                        }
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .background(Color.black.opacity(0.55))
+                        .cornerRadius(4)
+                        .padding(8)
+                    }
+                    .frame(width: frame.width, height: frame.height)
+                    .position(x: frame.midX, y: frame.midY)
+                }
+            }
+        }
+        .allowsHitTesting(false)
     }
 
     private func triggerAudioAlignment() async {

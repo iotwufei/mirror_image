@@ -16,6 +16,7 @@ final class ComparisonViewModel: ObservableObject {
     @Published var isPlaying: Bool = false
     @Published var controlMode: VideoControlMode = .synchronized
     @Published var showHistogram: Bool = false
+    @Published var showInfo: Bool = true
     @Published var layerVisibility: [Int: Bool] = [:]
 
     var currentGroup: ComparisonGroup? {

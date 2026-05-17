@@ -12,6 +12,7 @@ struct FileItem: Identifiable, Hashable, Equatable {
     let mediaType: MediaType
     let dimensions: CGSize?
     let duration: TimeInterval?
+    let cameraModel: String?
 
     init(url: URL) {
         self.id = UUID()
@@ -25,9 +26,10 @@ struct FileItem: Identifiable, Hashable, Equatable {
         self.modificationDate = resourceValues.contentModificationDate ?? Date.distantPast
         self.dimensions = nil
         self.duration = nil
+        self.cameraModel = nil
     }
 
-    init(url: URL, dimensions: CGSize?, duration: TimeInterval?) {
+    init(url: URL, dimensions: CGSize?, duration: TimeInterval?, cameraModel: String? = nil) {
         self.id = UUID()
         self.url = url
         self.name = url.lastPathComponent
@@ -39,6 +41,7 @@ struct FileItem: Identifiable, Hashable, Equatable {
         self.modificationDate = resourceValues.contentModificationDate ?? Date.distantPast
         self.dimensions = dimensions
         self.duration = duration
+        self.cameraModel = cameraModel
     }
 
     private static func resolveMediaType(from url: URL) -> MediaType {

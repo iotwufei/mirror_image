@@ -26,6 +26,7 @@ final class ComparisonView: NSView {
     var onToggleLayerVisibility: ((Int) -> Void)?
     var onExit: (() -> Void)?
     var onZoomChanged: ((CGFloat) -> Void)?
+    var onToggleInfo: (() -> Void)?
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -395,6 +396,8 @@ final class ComparisonView: NSView {
             onGroupNavigation?(false)
         case 4:
             onToggleHistogram?()
+        case 34:
+            onToggleInfo?()
         case 18...29:
             let index = Int(event.keyCode) - 18
             onToggleLayerVisibility?(index)
