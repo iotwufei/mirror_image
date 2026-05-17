@@ -322,12 +322,15 @@ final class ComparisonView: NSView {
             let current = gesture.location(in: self)
             let delta = CGPoint(x: current.x - lastDragPoint.x, y: current.y - lastDragPoint.y)
             if let index = dragLayerIndex {
+                let zoom = zoomController.scale(for: index)
                 var pan = zoomController.perLayerPan[index] ?? .zero
-                pan.x += delta.x
-                pan.y += delta.y
+                pan.x += delta.x * zoom
+                pan.y += delta.y * zoom
                 zoomController.perLayerPan[index] = pan
             } else {
-                zoomController.pan(by: delta)
+                let zoom = zoomController.globalScale
+                zoomController.globalPan.x += delta.x * zoom
+                zoomController.globalPan.y += delta.y * zoom
             }
             applyLayerTransforms()
             lastDragPoint = current
@@ -365,8 +368,8 @@ final class ComparisonView: NSView {
                     var perPan = zoomController.perLayerPan[index] ?? .zero
                     let cx = layer.frame.midX - mousePoint.x
                     let cy = layer.frame.midY - mousePoint.y
-                    perPan.x += cx * (scaleDelta - 1)
-                    perPan.y += cy * (scaleDelta - 1)
+                    perPan.x += newZoom * cx * (scaleDelta - 1)
+                    perPan.y += newZoom * cy * (scaleDelta - 1)
                     zoomController.perLayerPan[index] = perPan
 
                     applyLayerTransforms()
@@ -381,8 +384,8 @@ final class ComparisonView: NSView {
             let scaleDelta = newScale / prevScale
             let cx = bounds.midX - mousePoint.x
             let cy = bounds.midY - mousePoint.y
-            zoomController.globalPan.x += cx * (scaleDelta - 1)
-            zoomController.globalPan.y += cy * (scaleDelta - 1)
+            zoomController.globalPan.x += newScale * cx * (scaleDelta - 1)
+            zoomController.globalPan.y += newScale * cy * (scaleDelta - 1)
             applyLayerTransforms()
             onZoomChanged?(newScale)
         }
