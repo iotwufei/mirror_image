@@ -25,6 +25,7 @@ final class ComparisonView: NSView {
     var onToggleHistogram: (() -> Void)?
     var onToggleLayerVisibility: ((Int) -> Void)?
     var onExit: (() -> Void)?
+    var onZoomChanged: ((CGFloat) -> Void)?
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -246,8 +247,8 @@ final class ComparisonView: NSView {
                 pan = .zero
             } else {
                 let clipSize = clipLayers[index].bounds.size
-                let excessW = clipSize.width * (zoom - 1) / 2
-                let excessH = clipSize.height * (zoom - 1) / 2
+                let excessW = clipSize.width * (zoom - 1) * zoom / 2
+                let excessH = clipSize.height * (zoom - 1) * zoom / 2
                 pan.x = max(-excessW, min(excessW, pan.x))
                 pan.y = max(-excessH, min(excessH, pan.y))
             }
@@ -259,7 +260,14 @@ final class ComparisonView: NSView {
         }
         for layer in videoLayers {
             let zoom = zoomController.globalScale
-            let pan = zoomController.globalPan
+            var pan = zoomController.globalPan
+            if zoom > 1.0 {
+                let clipSize = bounds.size
+                let excessW = clipSize.width * (zoom - 1) * zoom / 2
+                let excessH = clipSize.height * (zoom - 1) * zoom / 2
+                pan.x = max(-excessW, min(excessW, pan.x))
+                pan.y = max(-excessH, min(excessH, pan.y))
+            }
             var transform = CATransform3DIdentity
             transform = CATransform3DTranslate(transform, pan.x / zoom, pan.y / zoom, 0)
             transform = CATransform3DScale(transform, zoom, zoom, 1)
@@ -272,6 +280,7 @@ final class ComparisonView: NSView {
         let identity = CATransform3DIdentity
         imageLayers.forEach { $0.transform = identity }
         videoLayers.forEach { $0.transform = identity }
+        onZoomChanged?(1.0)
     }
 
     func setLayerVisibility(_ visible: Bool, at index: Int) {
@@ -340,7 +349,7 @@ final class ComparisonView: NSView {
     }
 
     override func scrollWheel(with event: NSEvent) {
-        let factor: CGFloat = 1.0 + event.scrollingDeltaY / 500.0
+        let factor: CGFloat = 1.0 + event.scrollingDeltaY / 100.0
         let mousePoint = convert(event.locationInWindow, from: nil)
 
         if event.modifierFlags.contains(.command) {
@@ -355,16 +364,26 @@ final class ComparisonView: NSView {
                     var perPan = zoomController.perLayerPan[index] ?? .zero
                     let cx = layer.frame.midX - mousePoint.x
                     let cy = layer.frame.midY - mousePoint.y
-                    perPan.x += cx * (1 - scaleDelta)
-                    perPan.y += cy * (1 - scaleDelta)
+                    perPan.x += cx * (scaleDelta - 1)
+                    perPan.y += cy * (scaleDelta - 1)
                     zoomController.perLayerPan[index] = perPan
 
                     applyLayerTransforms()
+                    onZoomChanged?(newZoom)
                     return
                 }
             }
         } else {
-            applyZoom(factor: factor)
+            let prevScale = zoomController.globalScale
+            zoomController.zoom(factor: factor)
+            let newScale = zoomController.globalScale
+            let scaleDelta = newScale / prevScale
+            let cx = bounds.midX - mousePoint.x
+            let cy = bounds.midY - mousePoint.y
+            zoomController.globalPan.x += cx * (scaleDelta - 1)
+            zoomController.globalPan.y += cy * (scaleDelta - 1)
+            applyLayerTransforms()
+            onZoomChanged?(newScale)
         }
     }
 

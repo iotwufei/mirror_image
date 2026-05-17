@@ -25,6 +25,9 @@ struct ImageDiffView: NSViewRepresentable {
         view.onExit = {
             NSApp.keyWindow?.close()
         }
+        view.onZoomChanged = { zoom in
+            viewModel.globalZoom = zoom
+        }
 
         return view
     }
@@ -36,6 +39,10 @@ struct ImageDiffView: NSViewRepresentable {
         }
 
         guard let group = viewModel.currentGroup else { return }
+
+        let groupChanged = context.coordinator.lastGroupIndex != viewModel.currentGroupIndex
+        guard groupChanged else { return }
+        context.coordinator.lastGroupIndex = viewModel.currentGroupIndex
 
         var images: [(CGImage, CGSize)] = []
         let controller = ImageLayerController()
@@ -64,6 +71,7 @@ struct ImageDiffView: NSViewRepresentable {
 
     class Coordinator: NSObject {
         var showHistogram: Bool
+        var lastGroupIndex: Int = -1
 
         init(showHistogram: Bool) {
             self.showHistogram = showHistogram
