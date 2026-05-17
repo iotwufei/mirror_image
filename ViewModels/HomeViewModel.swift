@@ -34,6 +34,10 @@ final class HomeViewModel: ObservableObject {
     }
 
     var allFiles: [FileItem] {
+        fileColumns.flatMap { $0.files }
+    }
+
+    var interleavedFiles: [FileItem] {
         guard !fileColumns.isEmpty else { return [] }
         let maxCount = fileColumns.map(\.files.count).max() ?? 0
         var result: [FileItem] = []
@@ -43,6 +47,23 @@ final class HomeViewModel: ObservableObject {
             }
         }
         return result
+    }
+
+    var selectedColumnCount: Int {
+        var count = 0
+        for col in fileColumns {
+            if col.files.contains(where: { selectedFileIDs.contains($0.id) }) {
+                count += 1
+            }
+        }
+        return count
+    }
+
+    func comparisonFiles() -> [FileItem] {
+        if selectedColumnCount > 1 {
+            return interleavedFiles
+        }
+        return allFiles
     }
 
     func addFolder() {

@@ -52,7 +52,7 @@ struct HomeView: View {
             }
         } else {
             let selected = viewModel.selectedFiles
-            let all = viewModel.allFiles
+            let all = viewModel.comparisonFiles()
             if !selected.isEmpty {
                 coordinator.enterComparison(allFiles: all, selectedFiles: selected)
             }

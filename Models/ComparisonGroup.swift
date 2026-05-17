@@ -16,10 +16,12 @@ struct ComparisonGroup: Identifiable, Equatable {
     static func buildGroups(from files: [FileItem], groupSize: Int) -> [ComparisonGroup] {
         let cappedSize = min(groupSize, 20)
         let cappedFiles = Array(files.prefix(1000))
-        return stride(from: 0, to: cappedFiles.count, by: cappedSize)
+        let step = cappedFiles.count > 1 ? 1 : cappedSize
+        return stride(from: 0, to: cappedFiles.count, by: step)
             .enumerated()
-            .map { (index, start) in
+            .compactMap { (index, start) in
                 let end = min(start + cappedSize, cappedFiles.count)
+                guard end > start else { return nil }
                 return ComparisonGroup(files: Array(cappedFiles[start..<end]), index: index)
             }
     }

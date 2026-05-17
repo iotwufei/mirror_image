@@ -6,6 +6,7 @@ struct FileColumnView: View {
     @ObservedObject var viewModel: HomeViewModel
     let columnWidth: CGFloat
     @EnvironmentObject var coordinator: AppCoordinator
+    @State private var visibleStartIndex: Int = 0
 
     var body: some View {
         VStack(spacing: 0) {
@@ -39,6 +40,12 @@ struct FileColumnView: View {
                         .onDisappear {
                             viewModel.cancelThumbnail(for: file)
                         }
+                        .background(
+                            GeometryReader { _ in
+                                Color.clear
+                                    .preference(key: VisibleRowPreferenceKey.self, value: Set([rowIndex]))
+                            }
+                        )
 
                         if rowIndex < column.files.count - 1 {
                             Rectangle()
@@ -50,12 +57,18 @@ struct FileColumnView: View {
                 }
                 .padding(.vertical, 4)
             }
+            .onPreferenceChange(VisibleRowPreferenceKey.self) { visibleRows in
+                if let firstVisible = visibleRows.min() {
+                    visibleStartIndex = firstVisible
+                }
+            }
 
             if !column.files.isEmpty {
                 ThumbnailGridView(
                     files: column.files,
                     thumbnailImages: viewModel.thumbnailImages,
-                    viewModel: viewModel
+                    viewModel: viewModel,
+                    visibleStartIndex: visibleStartIndex
                 )
                 .frame(height: 80)
             }
@@ -94,7 +107,7 @@ struct FileColumnView: View {
             viewModel.toggleFileSelection(file.id)
         } else {
             let selected = viewModel.selectedFiles
-            let all = viewModel.allFiles
+            let all = viewModel.comparisonFiles()
             if !selected.isEmpty {
                 coordinator.enterComparison(allFiles: all, selectedFiles: selected)
             }

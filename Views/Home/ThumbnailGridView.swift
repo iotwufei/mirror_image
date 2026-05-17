@@ -4,11 +4,12 @@ struct ThumbnailGridView: View {
     let files: [FileItem]
     let thumbnailImages: [UUID: CGImage]
     @ObservedObject var viewModel: HomeViewModel
+    let visibleStartIndex: Int
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             LazyHStack(spacing: 4) {
-                ForEach(files.prefix(30), id: \.id) { file in
+                ForEach(visibleFiles, id: \.id) { file in
                     ThumbnailCell(
                         file: file,
                         image: thumbnailImages[file.id],
@@ -21,6 +22,14 @@ struct ThumbnailGridView: View {
             .padding(.vertical, 6)
         }
         .background(Color(red: 0.14, green: 0.14, blue: 0.14))
+        .id(visibleStartIndex)
+    }
+
+    private var visibleFiles: [FileItem] {
+        guard files.count > 30 else { return Array(files) }
+        let start = max(0, min(visibleStartIndex, files.count - 1))
+        let displayCount = min(30, files.count - start)
+        return Array(files[start..<(start + displayCount)])
     }
 }
 

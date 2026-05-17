@@ -33,8 +33,7 @@ final class ComparisonViewModel: ObservableObject {
     }
 
     func setupGroups(files: [FileItem]) {
-        let groupSize = files.count
-        groups = ComparisonGroup.buildGroups(from: files, groupSize: groupSize)
+        groups = [ComparisonGroup(files: files, index: 0)]
         currentGroupIndex = 0
         globalZoom = 1.0
         perImageZoom = [:]
@@ -48,7 +47,11 @@ final class ComparisonViewModel: ObservableObject {
         groups = ComparisonGroup.buildGroups(from: allFiles, groupSize: groupSize)
         if let firstSelected = selectedFiles.first,
            let matchIdx = allFiles.firstIndex(where: { $0.id == firstSelected.id }) {
-            currentGroupIndex = matchIdx / groupSize
+            currentGroupIndex = min(matchIdx, groups.count - 1)
+            if currentGroupIndex < groups.count,
+               !groups[currentGroupIndex].files.contains(where: { $0.id == firstSelected.id }) {
+                currentGroupIndex = 0
+            }
         } else {
             currentGroupIndex = 0
         }
