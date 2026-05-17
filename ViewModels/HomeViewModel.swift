@@ -84,7 +84,6 @@ final class HomeViewModel: ObservableObject {
     }
 
     func setFilter(_ newFilter: MediaFilter) {
-        guard filter != newFilter else { return }
         filter = newFilter
         refreshFileColumns()
     }
