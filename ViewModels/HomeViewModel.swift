@@ -34,7 +34,15 @@ final class HomeViewModel: ObservableObject {
     }
 
     var allFiles: [FileItem] {
-        fileColumns.flatMap { $0.files }
+        guard !fileColumns.isEmpty else { return [] }
+        let maxCount = fileColumns.map(\.files.count).max() ?? 0
+        var result: [FileItem] = []
+        for i in 0..<maxCount {
+            for col in fileColumns where i < col.files.count {
+                result.append(col.files[i])
+            }
+        }
+        return result
     }
 
     func addFolder() {
