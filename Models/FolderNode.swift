@@ -6,7 +6,6 @@ final class FolderNode: Identifiable, ObservableObject {
     let name: String
     let path: String
 
-    @Published var isSelected: Bool = false
     @Published var isExpanded: Bool = false
     @Published var children: [FolderNode] = []
     @Published var isLeaf: Bool = false
@@ -57,6 +56,34 @@ final class FolderNode: Identifiable, ObservableObject {
             guard let isDir = try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory else { return false }
             return isDir
         }
+    }
+
+    func descendant(withID id: UUID) -> FolderNode? {
+        for child in children {
+            if child.id == id { return child }
+            if let found = child.descendant(withID: id) { return found }
+        }
+        return nil
+    }
+
+    func removeChild(withID id: UUID) -> Bool {
+        if let index = children.firstIndex(where: { $0.id == id }) {
+            children.remove(at: index)
+            return true
+        }
+        for child in children {
+            if child.removeChild(withID: id) { return true }
+        }
+        return false
+    }
+
+    func flattenedDescendants() -> [FolderNode] {
+        var result: [FolderNode] = []
+        for child in children {
+            result.append(child)
+            result.append(contentsOf: child.flattenedDescendants())
+        }
+        return result
     }
 }
 

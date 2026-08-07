@@ -14,7 +14,13 @@ struct ThumbnailGridView: View {
                         file: file,
                         image: thumbnailImages[file.id],
                         isSelected: viewModel.selectedFileIDs.contains(file.id),
-                        onToggle: { viewModel.toggleFileSelection(file.id) }
+                        onTap: {
+                            if NSEvent.modifierFlags.contains(.shift) {
+                                viewModel.shiftSelectFile(file.id)
+                            } else {
+                                viewModel.toggleFileSelection(file.id)
+                            }
+                        }
                     )
                 }
             }
@@ -22,7 +28,6 @@ struct ThumbnailGridView: View {
             .padding(.vertical, 6)
         }
         .background(Color(red: 0.14, green: 0.14, blue: 0.14))
-        .id(visibleStartIndex)
     }
 
     private var visibleFiles: [FileItem] {
@@ -37,7 +42,7 @@ struct ThumbnailCell: View {
     let file: FileItem
     let image: CGImage?
     let isSelected: Bool
-    let onToggle: () -> Void
+    let onTap: () -> Void
 
     var body: some View {
         ZStack {
@@ -74,7 +79,7 @@ struct ThumbnailCell: View {
         }
         .frame(width: 64, height: 64)
         .onTapGesture {
-            onToggle()
+            onTap()
         }
     }
 }

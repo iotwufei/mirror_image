@@ -20,10 +20,27 @@ final class HomeViewModel: ObservableObject {
     @Published var thumbnailImages: [UUID: CGImage] = [:]
     @Published var sidebarFocus: SidebarFocus?
     @Published var fileListFocus: FileListFocus?
+    @Published var columnScrollPositions: [Int: UUID?] = [:]
 
     let fileBrowser = FileBrowserModel()
     let thumbnailGenerator = ThumbnailGenerator()
     let metadataProvider = MediaMetadataProvider()
+    private var cancellables: Set<AnyCancellable> = []
+    private var selectionAnchorID: UUID?
+    private var folderSelectionAnchorID: UUID?
+    private var refreshGeneration = 0
+
+    init() {
+        fileBrowser.fileDiscoveryPublisher
+            .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
+            .sink { [weak self] _ in
+                Task { @MainActor in
+                    self?.refreshFileColumns()
+                }
+            }
+            .store(in: &cancellables)
+        loadPersistedFolders()
+    }
 
     var activeFileCount: Int {
         fileColumns.flatMap { $0.files }.count
@@ -61,9 +78,65 @@ final class HomeViewModel: ObservableObject {
 
     func comparisonFiles() -> [FileItem] {
         if selectedColumnCount > 1 {
-            return interleavedFiles
+            return interleavedFiles.filter { selectedFileIDs.contains($0.id) }
         }
-        return allFiles
+        return allFiles.filter { selectedFileIDs.contains($0.id) }
+    }
+
+    func selectFile(_ id: UUID) {
+        selectionAnchorID = id
+        selectedFileIDs = [id]
+    }
+
+    func shiftSelectFile(_ id: UUID) {
+        guard let anchor = selectionAnchorID,
+              let anchorLocation = fileLocation(of: anchor),
+              let targetLocation = fileLocation(of: id),
+              anchorLocation.column == targetLocation.column else {
+            selectFile(id)
+            return
+        }
+        let column = fileColumns[anchorLocation.column].files
+        let start = min(anchorLocation.row, targetLocation.row)
+        let end = max(anchorLocation.row, targetLocation.row)
+        selectedFileIDs = Set(column[start...end].map(\.id))
+    }
+
+    private func fileLocation(of id: UUID) -> (column: Int, row: Int)? {
+        for (columnIndex, column) in fileColumns.enumerated() {
+            if let row = column.files.firstIndex(where: { $0.id == id }) {
+                return (columnIndex, row)
+            }
+        }
+        return nil
+    }
+
+    func selectFolder(_ id: UUID) {
+        folderSelectionAnchorID = id
+        selectedFolderIDs = [id]
+        refreshFileColumns()
+    }
+
+    func shiftSelectFolder(_ id: UUID) {
+        let flat = flattenedFolderOrder()
+        guard let anchor = folderSelectionAnchorID,
+              let anchorIndex = flat.firstIndex(where: { $0.id == anchor }),
+              let targetIndex = flat.firstIndex(where: { $0.id == id }) else {
+            selectFolder(id)
+            return
+        }
+        let range = flat[min(anchorIndex, targetIndex)...max(anchorIndex, targetIndex)]
+        selectedFolderIDs = Set(range.map(\.id))
+        refreshFileColumns()
+    }
+
+    private func flattenedFolderOrder() -> [FolderNode] {
+        var result: [FolderNode] = []
+        for root in rootFolders {
+            result.append(root)
+            result.append(contentsOf: root.flattenedDescendants())
+        }
+        return result
     }
 
     func addFolder() {
@@ -92,6 +165,7 @@ final class HomeViewModel: ObservableObject {
         } else {
             selectedFolderIDs.insert(id)
         }
+        folderSelectionAnchorID = id
         refreshFileColumns()
     }
 
@@ -101,13 +175,12 @@ final class HomeViewModel: ObservableObject {
         } else {
             selectedFileIDs.insert(id)
         }
+        selectionAnchorID = id
     }
 
-    func selectAllInCurrentColumn() {
-        guard case let .column(colIndex, _) = fileListFocus else { return }
-        guard colIndex < fileColumns.count else { return }
-        let column = fileColumns[colIndex]
-        for file in column.files {
+    func selectAllInColumn(_ columnIndex: Int) {
+        guard columnIndex < fileColumns.count else { return }
+        for file in fileColumns[columnIndex].files {
             selectedFileIDs.insert(file.id)
         }
     }
@@ -118,7 +191,9 @@ final class HomeViewModel: ObservableObject {
     }
 
     func refreshFileColumns() {
-        let selectedFolders = rootFolders.filter { selectedFolderIDs.contains($0.id) }
+        refreshGeneration += 1
+        let generation = refreshGeneration
+        let selectedFolders = selectedFolderIDs.compactMap { folderNode(withID: $0) }
         Task {
             var columns: [FileItemColumn] = []
             for folder in selectedFolders {
@@ -130,8 +205,35 @@ final class HomeViewModel: ObservableObject {
                     files: resolvedItems
                 ))
             }
+            guard generation == refreshGeneration else { return }
             fileColumns = columns
+            let visibleIDs = Set(columns.flatMap(\.files).map(\.id))
+            selectedFileIDs.formIntersection(visibleIDs)
+            pruneColumnScrollPositions(for: columns)
+            await fileBrowser.startMonitoring(directories: selectedFolders.map(\.url))
             requestThumbnailsForVisible()
+        }
+    }
+
+    func folderNode(withID id: UUID) -> FolderNode? {
+        for root in rootFolders {
+            if root.id == id { return root }
+            if let found = root.descendant(withID: id) { return found }
+        }
+        return nil
+    }
+
+    private func pruneColumnScrollPositions(for columns: [FileItemColumn]) {
+        for (index, column) in columns.enumerated() {
+            if let saved = columnScrollPositions[index],
+               let savedID = saved,
+               !column.files.contains(where: { $0.id == savedID }) {
+                columnScrollPositions[index] = nil
+            }
+        }
+        let staleKeys = columnScrollPositions.keys.filter { $0 >= columns.count }
+        for key in staleKeys {
+            columnScrollPositions.removeValue(forKey: key)
         }
     }
 
@@ -178,7 +280,13 @@ final class HomeViewModel: ObservableObject {
     }
 
     func removeFolder(_ id: UUID) {
-        rootFolders.removeAll { $0.id == id }
+        if let index = rootFolders.firstIndex(where: { $0.id == id }) {
+            rootFolders.remove(at: index)
+        } else {
+            for root in rootFolders {
+                if root.removeChild(withID: id) { break }
+            }
+        }
         selectedFolderIDs.remove(id)
         persistRootFolders()
         refreshFileColumns()

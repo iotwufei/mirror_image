@@ -15,27 +15,16 @@ actor ThumbnailGenerator {
             return cached
         }
 
-        if activeTasks[file.id] != nil {
-            return try? await activeTasks[file.id]?.value
+        if let existing = activeTasks[file.id] {
+            return try? await existing.value
         }
 
-        let task = Task<CGImage?, Error> {
-            defer { runningCount -= 1 }
-
-            let image = try await generateImage(for: file)
-            if let cgImage = image {
-                cache.store(cgImage, for: file.id, cacheKey: file.cacheKey)
-            }
-            return image
+        let task = Task<CGImage?, Error> { [weak self] in
+            guard let self else { return nil }
+            return try await self.generateWithConcurrencyLimit(for: file)
         }
 
         activeTasks[file.id] = task
-
-        while runningCount >= maxConcurrentTasks {
-            try? await Task.sleep(nanoseconds: 50_000_000)
-        }
-        runningCount += 1
-
         let result = try? await task.value
         activeTasks[file.id] = nil
         return result
@@ -44,6 +33,30 @@ actor ThumbnailGenerator {
     func cancel(for file: FileItem) {
         activeTasks[file.id]?.cancel()
         activeTasks[file.id] = nil
+    }
+
+    private func generateWithConcurrencyLimit(for file: FileItem) async throws -> CGImage? {
+        await acquireSlot()
+        defer { releaseSlot() }
+
+        guard !Task.isCancelled else { throw CancellationError() }
+        let image = try await generateImage(for: file)
+        guard !Task.isCancelled else { throw CancellationError() }
+        if let cgImage = image {
+            cache.store(cgImage, for: file.id, cacheKey: file.cacheKey)
+        }
+        return image
+    }
+
+    private func acquireSlot() async {
+        while runningCount >= maxConcurrentTasks {
+            try? await Task.sleep(nanoseconds: 50_000_000)
+        }
+        runningCount += 1
+    }
+
+    private func releaseSlot() {
+        runningCount -= 1
     }
 
     private func generateImage(for file: FileItem) async throws -> CGImage? {

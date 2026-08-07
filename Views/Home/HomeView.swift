@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct HomeView: View {
-    @StateObject private var viewModel = HomeViewModel()
+    @ObservedObject var viewModel: HomeViewModel
     @EnvironmentObject var coordinator: AppCoordinator
     @State private var sidebarWidth: CGFloat = 240
 
@@ -27,35 +27,34 @@ struct HomeView: View {
             }
         }
         .background(Color(red: 0.1, green: 0.1, blue: 0.1))
-        .onAppear {
-            viewModel.loadPersistedFolders()
-        }
         .onKeyPress(.space) {
-            handleSpace()
-            return .handled
+            return handleSpace() ? .handled : .ignored
         }
         .onKeyPress(.escape) {
-            if viewModel.selectedFileIDs.isEmpty {
+            if !viewModel.selectedFileIDs.isEmpty {
                 viewModel.selectedFileIDs.removeAll()
             }
             return .handled
         }
     }
 
-    private func handleSpace() {
+    private func handleSpace() -> Bool {
         if viewModel.selectedFileIDs.isEmpty {
             if case let .column(col, row) = viewModel.fileListFocus,
                col < viewModel.fileColumns.count,
                row < viewModel.fileColumns[col].files.count {
                 let file = viewModel.fileColumns[col].files[row]
                 viewModel.toggleFileSelection(file.id)
+                return true
             }
+            return false
         } else {
-            let selected = viewModel.selectedFiles
-            let all = viewModel.comparisonFiles()
-            if !selected.isEmpty {
-                coordinator.enterComparison(allFiles: all, selectedFiles: selected)
+            let files = viewModel.comparisonFiles()
+            if !files.isEmpty {
+                coordinator.enterComparison(allFiles: files, selectedFiles: files)
+                return true
             }
+            return false
         }
     }
 }

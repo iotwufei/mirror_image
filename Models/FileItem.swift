@@ -1,6 +1,7 @@
 import Foundation
 import CoreGraphics
 import UniformTypeIdentifiers
+import CryptoKit
 
 struct FileItem: Identifiable, Hashable, Equatable {
     let id: UUID
@@ -15,7 +16,7 @@ struct FileItem: Identifiable, Hashable, Equatable {
     let cameraModel: String?
 
     init(url: URL) {
-        self.id = UUID()
+        self.id = FileItem.stableID(for: url)
         self.url = url
         self.name = url.lastPathComponent
         self.path = url.path
@@ -30,7 +31,7 @@ struct FileItem: Identifiable, Hashable, Equatable {
     }
 
     init(url: URL, dimensions: CGSize?, duration: TimeInterval?, cameraModel: String? = nil) {
-        self.id = UUID()
+        self.id = FileItem.stableID(for: url)
         self.url = url
         self.name = url.lastPathComponent
         self.path = url.path
@@ -44,7 +45,18 @@ struct FileItem: Identifiable, Hashable, Equatable {
         self.cameraModel = cameraModel
     }
 
-    private static func resolveMediaType(from url: URL) -> MediaType {
+    /// A deterministic ID derived from the file path so that refreshes and
+    /// app restarts yield the same identifier for the same file.
+    private static func stableID(for url: URL) -> UUID {
+        let digest = SHA256.hash(data: Data(url.standardizedFileURL.path.utf8))
+        let bytes = Array(digest.prefix(16))
+        let uuid = bytes.withUnsafeBytes { buffer in
+            buffer.load(as: uuid_t.self)
+        }
+        return UUID(uuid: uuid)
+    }
+
+    static func resolveMediaType(from url: URL) -> MediaType {
         let ext = url.pathExtension.lowercased()
         let imageExtensions: Set<String> = ["jpg", "jpeg", "png", "heic", "heif", "webp", "tiff", "tif", "cr2", "nef", "arw", "psd", "gif", "bmp"]
         let videoExtensions: Set<String> = ["mp4", "mov", "m4v", "avi", "mkv"]
@@ -53,6 +65,12 @@ struct FileItem: Identifiable, Hashable, Equatable {
             return .video
         }
         if imageExtensions.contains(ext) {
+            if ext == "heic" || ext == "heif" {
+                let pairedVideoURL = url.deletingPathExtension().appendingPathExtension("mov")
+                if FileManager.default.fileExists(atPath: pairedVideoURL.path) {
+                    return .livePhoto
+                }
+            }
             return .image
         }
         return .unknown

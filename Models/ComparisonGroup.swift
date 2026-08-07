@@ -14,10 +14,10 @@ struct ComparisonGroup: Identifiable, Equatable {
     var count: Int { files.count }
 
     static func buildGroups(from files: [FileItem], groupSize: Int) -> [ComparisonGroup] {
-        let cappedSize = min(groupSize, 20)
+        let cappedSize = min(max(groupSize, 1), 20)
         let cappedFiles = Array(files.prefix(1000))
-        let step = cappedFiles.count > 1 ? 1 : cappedSize
-        return stride(from: 0, to: cappedFiles.count, by: step)
+        guard !cappedFiles.isEmpty else { return [] }
+        return stride(from: 0, to: cappedFiles.count, by: cappedSize)
             .enumerated()
             .compactMap { (index, start) in
                 let end = min(start + cappedSize, cappedFiles.count)

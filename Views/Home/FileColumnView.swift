@@ -25,11 +25,12 @@ struct FileColumnView: View {
                             thumbnail: viewModel.thumbnailImages[file.id],
                             isFocused: isRowFocused(rowIndex)
                         )
+                        .id(file.id)
                         .contentShape(Rectangle())
                         .onTapGesture {
                             viewModel.fileListFocus = .column(columnIndex, rowIndex)
-                            if NSEvent.modifierFlags.contains(.command) {
-                                viewModel.toggleFileSelection(file.id)
+                            if NSEvent.modifierFlags.contains(.shift) {
+                                viewModel.shiftSelectFile(file.id)
                             } else {
                                 viewModel.toggleFileSelection(file.id)
                             }
@@ -57,9 +58,27 @@ struct FileColumnView: View {
                 }
                 .padding(.vertical, 4)
             }
+            .scrollPosition(id: scrollPositionBinding)
             .onPreferenceChange(VisibleRowPreferenceKey.self) { visibleRows in
                 if let firstVisible = visibleRows.min() {
                     visibleStartIndex = firstVisible
+                }
+            }
+            .onChange(of: viewModel.fileListFocus) { _, focus in
+                guard case let .column(col, row) = focus,
+                      col == columnIndex,
+                      column.files.indices.contains(row) else { return }
+                scrollPositionBinding.wrappedValue = column.files[row].id
+            }
+            .onChange(of: viewModel.columnScrollPositions[columnIndex]) { _, newValue in
+                if let id = newValue, let row = column.files.firstIndex(where: { $0.id == id }) {
+                    visibleStartIndex = row
+                }
+            }
+            .onAppear {
+                if let id = viewModel.columnScrollPositions[columnIndex],
+                   let row = column.files.firstIndex(where: { $0.id == id }) {
+                    visibleStartIndex = row
                 }
             }
 
@@ -75,8 +94,7 @@ struct FileColumnView: View {
         }
         .focusable()
         .onKeyPress(.space) {
-            handleSpace()
-            return .handled
+            return handleSpace() ? .handled : .ignored
         }
         .onKeyPress(.upArrow) {
             moveFocus(rowDelta: -1)
@@ -91,27 +109,35 @@ struct FileColumnView: View {
             return .handled
         }
         .onKeyPress(KeyEquivalent("a")) {
-            if NSEvent.modifierFlags.contains(.command) {
-                viewModel.selectAllInCurrentColumn()
-            }
+            guard NSEvent.modifierFlags.contains(.command) else { return .ignored }
+            viewModel.selectAllInColumn(columnIndex)
             return .handled
         }
     }
 
-    private func handleSpace() {
+    private func handleSpace() -> Bool {
         if viewModel.selectedFileIDs.isEmpty {
             guard case let .column(col, row) = viewModel.fileListFocus,
                   col == columnIndex,
-                  row < column.files.count else { return }
+                  row < column.files.count else { return false }
             let file = column.files[row]
             viewModel.toggleFileSelection(file.id)
+            return true
         } else {
-            let selected = viewModel.selectedFiles
-            let all = viewModel.comparisonFiles()
-            if !selected.isEmpty {
-                coordinator.enterComparison(allFiles: all, selectedFiles: selected)
+            let files = viewModel.comparisonFiles()
+            if !files.isEmpty {
+                coordinator.enterComparison(allFiles: files, selectedFiles: files)
+                return true
             }
+            return false
         }
+    }
+
+    private var scrollPositionBinding: Binding<UUID?> {
+        Binding(
+            get: { viewModel.columnScrollPositions[columnIndex] ?? nil },
+            set: { viewModel.columnScrollPositions[columnIndex] = $0 }
+        )
     }
 
     private var columnHeader: some View {

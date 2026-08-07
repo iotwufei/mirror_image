@@ -59,19 +59,19 @@ struct ContentArea: View {
             }
             .focusable()
             .onKeyPress(.space) {
-                handleSpace()
-                return .handled
+                return handleSpace() ? .handled : .ignored
             }
         }
     }
 
-    private func handleSpace() {
+    private func handleSpace() -> Bool {
         if !viewModel.selectedFileIDs.isEmpty {
-            let selected = viewModel.selectedFiles
-            let all = viewModel.allFiles
-            if !selected.isEmpty {
-                coordinator.enterComparison(allFiles: all, selectedFiles: selected)
+            let files = viewModel.comparisonFiles()
+            if !files.isEmpty {
+                coordinator.enterComparison(allFiles: files, selectedFiles: files)
+                return true
             }
         }
+        return false
     }
 }

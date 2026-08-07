@@ -30,6 +30,6 @@ struct FilterBarView: View {
     }
 
     private var keyboardHint: String {
-        "Space: Select  |  Tab: Switch Column  |  Enter: Compare"
+        "Space: Select / Compare  |  Tab: Switch Column"
     }
 }

@@ -43,12 +43,7 @@ struct SidebarView: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
                         ForEach(viewModel.rootFolders) { folder in
-                            FolderRowView(
-                                folder: folder,
-                                isSelected: viewModel.selectedFolderIDs.contains(folder.id),
-                                onToggle: { viewModel.toggleFolderSelection(folder.id) },
-                                onRemove: { viewModel.removeFolder(folder.id) }
-                            )
+                            FolderRowView(folder: folder, viewModel: viewModel)
                         }
                     }
                     .padding(.vertical, 4)
@@ -62,25 +57,26 @@ struct SidebarView: View {
 
 struct FolderRowView: View {
     @ObservedObject var folder: FolderNode
-    let isSelected: Bool
-    let onToggle: () -> Void
-    let onRemove: () -> Void
+    @ObservedObject var viewModel: HomeViewModel
     @State private var isHovered = false
-    @State private var isExpanded = false
+
+    private var isSelected: Bool {
+        viewModel.selectedFolderIDs.contains(folder.id)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 6) {
                 Toggle("", isOn: Binding<Bool>(
                     get: { isSelected },
-                    set: { _ in onToggle() }
+                    set: { _ in viewModel.toggleFolderSelection(folder.id) }
                 ))
                 .toggleStyle(.checkbox)
                 .scaleEffect(0.8)
 
                 if !folder.isLeaf {
                     Button(action: { toggleExpand() }) {
-                        Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                        Image(systemName: folder.isExpanded ? "chevron.down" : "chevron.right")
                             .font(.system(size: 10, weight: .bold))
                             .foregroundColor(.white.opacity(0.5))
                     }
@@ -103,7 +99,7 @@ struct FolderRowView: View {
                 Spacer()
 
                 if isHovered {
-                    Button(action: onRemove) {
+                    Button(action: { viewModel.removeFolder(folder.id) }) {
                         Image(systemName: "xmark.circle.fill")
                             .font(.system(size: 12))
                             .foregroundColor(.white.opacity(0.4))
@@ -116,16 +112,20 @@ struct FolderRowView: View {
             .background(isSelected ? Color.accentColor.opacity(0.2) : Color.clear)
             .contentShape(Rectangle())
             .onHover { isHovered = $0 }
+            .onTapGesture {
+                if NSEvent.modifierFlags.contains(.shift) {
+                    viewModel.shiftSelectFolder(folder.id)
+                } else if NSEvent.modifierFlags.contains(.command) {
+                    viewModel.toggleFolderSelection(folder.id)
+                } else {
+                    viewModel.selectFolder(folder.id)
+                }
+            }
 
-            if isExpanded && !folder.children.isEmpty {
+            if folder.isExpanded && !folder.children.isEmpty {
                 VStack(alignment: .leading, spacing: 0) {
                     ForEach(folder.children) { child in
-                        FolderRowView(
-                            folder: child,
-                            isSelected: false,
-                            onToggle: {},
-                            onRemove: {}
-                        )
+                        FolderRowView(folder: child, viewModel: viewModel)
                         .padding(.leading, 16)
                     }
                 }
@@ -134,8 +134,8 @@ struct FolderRowView: View {
     }
 
     private func toggleExpand() {
-        isExpanded.toggle()
-        if isExpanded {
+        folder.isExpanded.toggle()
+        if folder.isExpanded {
             folder.loadChildren()
         }
     }

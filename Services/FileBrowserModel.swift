@@ -1,11 +1,20 @@
 import Foundation
 import Combine
 
+private final class FSEventsBox {
+    let onChange: ([URL]) -> Void
+
+    init(onChange: @escaping ([URL]) -> Void) {
+        self.onChange = onChange
+    }
+}
+
 actor FileBrowserModel {
     private let fileManager = FileManager.default
     private let supportedImageExtensions: Set<String> = ["jpg", "jpeg", "png", "heic", "heif", "webp", "tiff", "tif", "cr2", "nef", "arw", "psd", "gif", "bmp"]
     private let supportedVideoExtensions: Set<String> = ["mp4", "mov", "m4v", "avi", "mkv"]
     private var fseventStream: FSEventStreamRef?
+    private var monitoringBox: FSEventsBox?
 
     nonisolated let fileDiscoveryPublisher = PassthroughSubject<[URL], Never>()
 
@@ -28,8 +37,7 @@ actor FileBrowserModel {
 
     func listFilteredFiles(in directory: URL, filter: MediaFilter) -> [URL] {
         return listFiles(in: directory).filter { url in
-            let ext = url.pathExtension.lowercased()
-            let mediaType: MediaType = supportedVideoExtensions.contains(ext) ? .video : .image
+            let mediaType = FileItem.resolveMediaType(from: url)
             return filter.accepts(mediaType)
         }
     }
@@ -57,17 +65,31 @@ actor FileBrowserModel {
 
     func startMonitoring(directories: [URL]) {
         stopMonitoring()
+        guard !directories.isEmpty else { return }
+
         let paths = directories.map { $0.path }
-        var context = FSEventStreamContext(version: 0, info: nil, retain: nil, release: nil, copyDescription: nil)
+
+        let box = FSEventsBox { [weak self] urls in
+            self?.fileDiscoveryPublisher.send(urls)
+        }
+        monitoringBox = box
+
+        var context = FSEventStreamContext(
+            version: 0,
+            info: Unmanaged.passRetained(box).toOpaque(),
+            retain: nil,
+            release: nil,
+            copyDescription: nil
+        )
         let flags = FSEventStreamCreateFlags(kFSEventStreamCreateFlagFileEvents | kFSEventStreamCreateFlagUseCFTypes)
 
         fseventStream = FSEventStreamCreate(
             kCFAllocatorDefault,
-            { (_, _, numEvents, eventPaths, _, _) in
+            { (_, info, _, eventPaths, _, _) in
+                guard let info else { return }
+                let box = Unmanaged<FSEventsBox>.fromOpaque(info).takeUnretainedValue()
                 guard let paths = unsafeBitCast(eventPaths, to: NSArray.self) as? [String] else { return }
-                let urls = paths.map { URL(fileURLWithPath: $0) }
-                // FSEvents callback - directory content changed
-                _ = urls
+                box.onChange(paths.map { URL(fileURLWithPath: $0) })
             },
             &context,
             paths as CFArray,
@@ -88,6 +110,10 @@ actor FileBrowserModel {
             FSEventStreamInvalidate(stream)
             FSEventStreamRelease(stream)
             fseventStream = nil
+        }
+        if let box = monitoringBox {
+            Unmanaged.passUnretained(box).release()
+            monitoringBox = nil
         }
     }
 

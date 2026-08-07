@@ -14,6 +14,7 @@ final class AppCoordinator: ObservableObject {
     }
 
     @Published var route: Route = .home
+    let homeViewModel = HomeViewModel()
 
     func enterComparison(allFiles: [FileItem], selectedFiles: [FileItem]) {
         guard !selectedFiles.isEmpty else { return }
