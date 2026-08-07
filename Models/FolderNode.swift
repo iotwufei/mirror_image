@@ -29,20 +29,15 @@ final class FolderNode: Identifiable, ObservableObject {
     }
 
     static func hasSubdirectories(at url: URL) -> Bool {
-        guard let enumerator = FileManager.default.enumerator(
+        guard let contents = try? FileManager.default.contentsOfDirectory(
             at: url,
             includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles, .skipsPackageDescendants]
+            options: [.skipsHiddenFiles]
         ) else { return false }
 
-        while let fileURL = enumerator.nextObject() as? URL {
-            let resourceValues = (try? fileURL.resourceValues(forKeys: [.isDirectoryKey])) ?? URLResourceValues()
-            if resourceValues.isDirectory == true {
-                return true
-            }
-            enumerator.skipDescendants()
+        return contents.contains { fileURL in
+            (try? fileURL.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
         }
-        return false
     }
 
     static func subdirectories(at url: URL) -> [URL] {

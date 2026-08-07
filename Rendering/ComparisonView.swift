@@ -20,6 +20,9 @@ final class ComparisonView: NSView {
     private var pendingVideoController: VideoLayerController?
     private var isVideoMode: Bool = false
     private var currentVideoURLs: [URL] = []
+    private var pendingVisibility: [Int: Bool] = [:]
+    private var needsLayerRebuild = true
+    private var lastLayoutSize: CGSize = .zero
 
     var onGroupNavigation: ((Bool) -> Void)?
     var onToggleHistogram: (() -> Void)?
@@ -57,6 +60,7 @@ final class ComparisonView: NSView {
         isVideoMode = false
         dragLayerIndex = nil
         zoomController.reset()
+        needsLayerRebuild = true
         needsLayout = true
     }
 
@@ -75,6 +79,7 @@ final class ComparisonView: NSView {
         isVideoMode = true
         dragLayerIndex = nil
         zoomController.reset()
+        needsLayerRebuild = true
         needsLayout = true
     }
 
@@ -119,13 +124,37 @@ final class ComparisonView: NSView {
         pendingVideoURLs = []
         pendingVideoController = nil
         isVideoMode = false
-        relayoutLayers()
+        needsLayerRebuild = true
+        needsLayout = true
     }
 
     override func layout() {
         super.layout()
-        relayoutLayers()
+        let newSize = bounds.size
+        if needsLayerRebuild || (clipLayers.isEmpty && (!pendingImages.isEmpty || isVideoMode)) {
+            relayoutLayers()
+            needsLayerRebuild = false
+        } else if newSize != lastLayoutSize, !clipLayers.isEmpty {
+            updateClipFrames(in: newSize)
+        }
+        lastLayoutSize = newSize
         applyLayerTransforms()
+    }
+
+    private func updateClipFrames(in size: CGSize) {
+        let frames = layoutEngine.frames(for: clipLayers.count, in: CGRect(origin: .zero, size: size))
+        for (index, clip) in clipLayers.enumerated() where index < frames.count {
+            clip.frame = frames[index]
+            if index < imageLayers.count {
+                imageLayers[index].frame = clip.bounds
+            }
+            if index < videoLayers.count {
+                videoLayers[index].frame = clip.bounds
+            }
+            if index < histogramOverlays.count {
+                histogramOverlays[index].updateSize(basedOn: clip.bounds.size)
+            }
+        }
     }
 
     private func relayoutLayers() {
@@ -166,6 +195,9 @@ final class ComparisonView: NSView {
             let clipLayer = CALayer()
             clipLayer.frame = clipFrame
             clipLayer.masksToBounds = true
+            if let visible = pendingVisibility[index] {
+                clipLayer.isHidden = !visible
+            }
             self.layer?.addSublayer(clipLayer)
             clipLayers.append(clipLayer)
 
@@ -216,6 +248,9 @@ final class ComparisonView: NSView {
             let clipLayer = CALayer()
             clipLayer.frame = clipFrame
             clipLayer.masksToBounds = true
+            if let visible = pendingVisibility[index] {
+                clipLayer.isHidden = !visible
+            }
             self.layer?.addSublayer(clipLayer)
             clipLayers.append(clipLayer)
 
@@ -231,11 +266,6 @@ final class ComparisonView: NSView {
         if !layers.isEmpty, videoLayers.isEmpty {
             videoLayers = layers
         }
-    }
-
-    func applyZoom(layerIndex: Int? = nil, factor: CGFloat? = nil) {
-        zoomController.zoom(factor: factor ?? 1.0)
-        applyLayerTransforms()
     }
 
     private func applyLayerTransforms() {
@@ -259,11 +289,12 @@ final class ComparisonView: NSView {
             transform = CATransform3DScale(transform, zoom, zoom, 1)
             layer.transform = transform
         }
-        for layer in videoLayers {
+        for (index, layer) in videoLayers.enumerated() {
+            guard index < clipLayers.count else { continue }
             let zoom = zoomController.globalScale
             var pan = zoomController.globalPan
             if zoom > 1.0 {
-                let clipSize = bounds.size
+                let clipSize = clipLayers[index].bounds.size
                 let excessW = clipSize.width * (zoom - 1) * zoom / 2
                 let excessH = clipSize.height * (zoom - 1) * zoom / 2
                 pan.x = max(-excessW, min(excessW, pan.x))
@@ -276,15 +307,8 @@ final class ComparisonView: NSView {
         }
     }
 
-    func resetZoom() {
-        zoomController.reset()
-        let identity = CATransform3DIdentity
-        imageLayers.forEach { $0.transform = identity }
-        videoLayers.forEach { $0.transform = identity }
-        onZoomChanged?(1.0)
-    }
-
     func setLayerVisibility(_ visible: Bool, at index: Int) {
+        pendingVisibility[index] = visible
         guard index < clipLayers.count else { return }
         clipLayers[index].isHidden = !visible
     }
@@ -299,9 +323,6 @@ final class ComparisonView: NSView {
     private func setupGestureRecognizers() {
         let panGesture = NSPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
         addGestureRecognizer(panGesture)
-
-        let clickGesture = NSClickGestureRecognizer(target: self, action: #selector(handleClick(_:)))
-        addGestureRecognizer(clickGesture)
     }
 
     @objc private func handlePan(_ gesture: NSPanGestureRecognizer) {
@@ -339,16 +360,6 @@ final class ComparisonView: NSView {
             dragLayerIndex = nil
         default:
             break
-        }
-    }
-
-    @objc private func handleClick(_ gesture: NSClickGestureRecognizer) {
-        let point = gesture.location(in: self)
-        for (index, clipLayer) in clipLayers.enumerated() {
-            if clipLayer.frame.contains(point) {
-                onToggleLayerVisibility?(index)
-                return
-            }
         }
     }
 
@@ -394,14 +405,30 @@ final class ComparisonView: NSView {
     override func keyDown(with event: NSEvent) {
         switch event.keyCode {
         case 49:
-            onGroupNavigation?(true)
+            if let onGroupNavigation {
+                onGroupNavigation(true)
+            } else {
+                super.keyDown(with: event)
+            }
         case 11:
-            onGroupNavigation?(false)
+            if let onGroupNavigation {
+                onGroupNavigation(false)
+            } else {
+                super.keyDown(with: event)
+            }
         case 4:
-            onToggleHistogram?()
+            if let onToggleHistogram {
+                onToggleHistogram()
+            } else {
+                super.keyDown(with: event)
+            }
         case 34:
-            onToggleInfo?()
-        case 18...29:
+            if let onToggleInfo {
+                onToggleInfo()
+            } else {
+                super.keyDown(with: event)
+            }
+        case 18...26:
             let index = Int(event.keyCode) - 18
             onToggleLayerVisibility?(index)
         case 53:

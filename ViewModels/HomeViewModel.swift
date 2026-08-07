@@ -46,10 +46,6 @@ final class HomeViewModel: ObservableObject {
         fileColumns.flatMap { $0.files }.count
     }
 
-    var selectedFiles: [FileItem] {
-        fileColumns.flatMap { $0.files }.filter { selectedFileIDs.contains($0.id) }
-    }
-
     var allFiles: [FileItem] {
         fileColumns.flatMap { $0.files }
     }
@@ -238,18 +234,26 @@ final class HomeViewModel: ObservableObject {
     }
 
     func resolveMetadata(for items: [FileItem]) async -> [FileItem] {
-        var resolved: [FileItem] = []
-        for item in items {
-            let metadata = await metadataProvider.extractMetadata(for: item.url)
-            let resolvedItem = FileItem(
-                url: item.url,
-                dimensions: metadata.dimensions,
-                duration: metadata.duration,
-                cameraModel: metadata.cameraModel
-            )
-            resolved.append(resolvedItem)
+        await withTaskGroup(of: (Int, (CGSize?, TimeInterval?, String?)).self) { group in
+            for (index, item) in items.enumerated() {
+                group.addTask {
+                    let metadata = await self.metadataProvider.extractMetadata(for: item.url)
+                    return (index, metadata)
+                }
+            }
+
+            var resolved = [FileItem?](repeating: nil, count: items.count)
+            for await (index, metadata) in group {
+                let item = items[index]
+                resolved[index] = FileItem(
+                    url: item.url,
+                    dimensions: metadata.0,
+                    duration: metadata.1,
+                    cameraModel: metadata.2
+                )
+            }
+            return resolved.compactMap { $0 }
         }
-        return resolved
     }
 
     func requestThumbnailsForVisible() {

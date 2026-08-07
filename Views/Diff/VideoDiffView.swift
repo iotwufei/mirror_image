@@ -5,6 +5,7 @@ struct VideoDiffView: NSViewRepresentable {
     @ObservedObject var viewModel: ComparisonViewModel
     let files: [FileItem]
     let videoController: VideoLayerController
+    let onExit: () -> Void
 
     func makeNSView(context: Context) -> ComparisonView {
         let view = ComparisonView()
@@ -18,6 +19,9 @@ struct VideoDiffView: NSViewRepresentable {
         }
         view.onToggleInfo = {
             viewModel.showInfo.toggle()
+        }
+        view.onExit = {
+            onExit()
         }
 
         return view

@@ -21,9 +21,14 @@ struct DiffView: View {
 
                 switch mode {
                 case .image:
-                    ImageDiffView(viewModel: viewModel, files: allFiles)
+                    ImageDiffView(viewModel: viewModel, onExit: exitComparison)
                 case .video:
-                    VideoDiffView(viewModel: viewModel, files: allFiles, videoController: videoController)
+                    VideoDiffView(
+                        viewModel: viewModel,
+                        files: allFiles,
+                        videoController: videoController,
+                        onExit: exitComparison
+                    )
                 }
             }
 
@@ -32,11 +37,6 @@ struct DiffView: View {
         .background(Color.black)
         .onAppear {
             viewModel.setupGroups(allFiles: allFiles, selectedFiles: selectedFiles)
-            DispatchQueue.main.async {
-                if let window = NSApp.keyWindow, !window.styleMask.contains(.fullScreen) {
-                    window.toggleFullScreen(nil)
-                }
-            }
         }
         .onKeyPress(.space) {
             if mode == .video {
@@ -59,10 +59,7 @@ struct DiffView: View {
             return .handled
         }
         .onKeyPress(.escape) {
-            if let window = NSApp.keyWindow, window.styleMask.contains(.fullScreen) {
-                window.toggleFullScreen(nil)
-            }
-            coordinator.exitComparison()
+            exitComparison()
             return .handled
         }
         .onKeyPress(.leftArrow) {
@@ -112,7 +109,7 @@ struct DiffView: View {
 
     private var topBar: some View {
         HStack {
-            Button(action: { coordinator.exitComparison() }) {
+            Button(action: exitComparison) {
                 HStack(spacing: 4) {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 12, weight: .semibold))
@@ -152,6 +149,13 @@ struct DiffView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
         .background(Color(red: 0.08, green: 0.08, blue: 0.08))
+    }
+
+    private func exitComparison() {
+        if let window = NSApp.keyWindow, window.styleMask.contains(.fullScreen) {
+            window.toggleFullScreen(nil)
+        }
+        coordinator.exitComparison()
     }
 
     private var bottomBar: some View {

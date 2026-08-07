@@ -7,6 +7,7 @@ import AVFoundation
 actor HistogramCalculator {
     private var cachedResults: [UUID: HistogramData] = [:]
     private let maxCachedResults = 50
+    private lazy var ciContext = CIContext()
 
     struct HistogramData: Sendable {
         let luminance: [Float]
@@ -17,68 +18,58 @@ actor HistogramCalculator {
     }
 
     func calculate(for image: CGImage) async -> HistogramData {
-        guard let format = vImage_CGImageFormat(cgImage: image),
-              var sourceBuffer = try? vImage_Buffer(cgImage: image, format: format) else {
+        let ciImage = CIImage(cgImage: image)
+        guard let filter = CIFilter(name: "CIAreaHistogram") else {
             return HistogramData(luminance: [], red: [], green: [], blue: [], binCount: 256)
         }
-        defer { sourceBuffer.free() }
-
-        var redBins = [vImagePixelCount](repeating: 0, count: 256)
-        var greenBins = [vImagePixelCount](repeating: 0, count: 256)
-        var blueBins = [vImagePixelCount](repeating: 0, count: 256)
-        var alphaBins = [vImagePixelCount](repeating: 0, count: 256)
-
-        var localError: vImage_Error = kvImageNoError
-        redBins.withUnsafeMutableBufferPointer { rPtr in
-            greenBins.withUnsafeMutableBufferPointer { gPtr in
-                blueBins.withUnsafeMutableBufferPointer { bPtr in
-                    alphaBins.withUnsafeMutableBufferPointer { aPtr in
-                        var ptrs: [UnsafeMutablePointer<vImagePixelCount>?] = [
-                            rPtr.baseAddress,
-                            gPtr.baseAddress,
-                            bPtr.baseAddress,
-                            aPtr.baseAddress,
-                        ]
-                        localError = vImageHistogramCalculation_ARGB8888(
-                            &sourceBuffer,
-                            &ptrs,
-                            vImage_Flags(kvImageNoFlags)
-                        )
-                    }
-                }
-            }
-        }
-
-        if localError != kvImageNoError {
+        filter.setValue(ciImage, forKey: kCIInputImageKey)
+        filter.setValue(CIVector(cgRect: ciImage.extent), forKey: kCIInputExtentKey)
+        filter.setValue(256, forKey: "inputCount")
+        filter.setValue(1.0, forKey: "inputScale")
+        guard let output = filter.outputImage else {
             return HistogramData(luminance: [], red: [], green: [], blue: [], binCount: 256)
         }
 
-        let maxR = redBins.max() ?? 1
-        let maxG = greenBins.max() ?? 1
-        let maxB = blueBins.max() ?? 1
-        let maxValue: Float = Float(max(max(maxR, maxG), maxB))
+        var histogramData = [Float](repeating: 0, count: 256 * 4)
+        histogramData.withUnsafeMutableBytes { buffer in
+            ciContext.render(
+                output,
+                toBitmap: buffer.baseAddress!,
+                rowBytes: 256 * 4 * MemoryLayout<Float>.size,
+                bounds: CGRect(x: 0, y: 0, width: 256, height: 1),
+                format: .RGBAf,
+                colorSpace: CGColorSpaceCreateDeviceRGB()
+            )
+        }
+
+        var maxValue: Float = 0
+        for i in 0..<256 {
+            maxValue = max(
+                maxValue,
+                histogramData[i * 4],
+                histogramData[i * 4 + 1],
+                histogramData[i * 4 + 2]
+            )
+        }
 
         guard maxValue > 0 else {
             return HistogramData(luminance: [], red: [], green: [], blue: [], binCount: 256)
         }
 
-        let luminance = (0..<256).map { i -> Float in
-            let r = Float(redBins[i]) / maxValue
-            let g = Float(greenBins[i]) / maxValue
-            let b = Float(blueBins[i]) / maxValue
-            return (0.2126 * r + 0.7152 * g + 0.0722 * b)
-        }
+        let red = (0..<256).map { histogramData[$0 * 4] / maxValue }
+        let green = (0..<256).map { histogramData[$0 * 4 + 1] / maxValue }
+        let blue = (0..<256).map { histogramData[$0 * 4 + 2] / maxValue }
 
-        let red = redBins.map { Float($0) / maxValue }
-        let green = greenBins.map { Float($0) / maxValue }
-        let blue = blueBins.map { Float($0) / maxValue }
+        let luminance = (0..<256).map { i -> Float in
+            return 0.2126 * red[i] + 0.7152 * green[i] + 0.0722 * blue[i]
+        }
 
         return HistogramData(luminance: luminance, red: red, green: green, blue: blue, binCount: 256)
     }
 
     func calculate(from pixelBuffer: CVPixelBuffer) async -> HistogramData {
         let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
-        guard let cgImage = CIContext().createCGImage(ciImage, from: ciImage.extent) else {
+        guard let cgImage = ciContext.createCGImage(ciImage, from: ciImage.extent) else {
             return HistogramData(luminance: [], red: [], green: [], blue: [], binCount: 256)
         }
         return await calculate(for: cgImage)

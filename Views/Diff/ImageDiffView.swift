@@ -3,7 +3,7 @@ import AppKit
 
 struct ImageDiffView: NSViewRepresentable {
     @ObservedObject var viewModel: ComparisonViewModel
-    let files: [FileItem]
+    let onExit: () -> Void
 
     func makeNSView(context: Context) -> ComparisonView {
         let view = ComparisonView()
@@ -23,7 +23,7 @@ struct ImageDiffView: NSViewRepresentable {
             view.setLayerVisibility(viewModel.isLayerVisible(index), at: index)
         }
         view.onExit = {
-            NSApp.keyWindow?.close()
+            onExit()
         }
         view.onZoomChanged = { zoom in
             viewModel.globalZoom = zoom
@@ -46,25 +46,30 @@ struct ImageDiffView: NSViewRepresentable {
         let groupChanged = context.coordinator.lastGroupIndex != viewModel.currentGroupIndex
         guard groupChanged else { return }
         context.coordinator.lastGroupIndex = viewModel.currentGroupIndex
+        context.coordinator.loadTask?.cancel()
 
-        var images: [(CGImage, CGSize)] = []
-        let controller = ImageLayerController()
-
-        for file in group.files {
-            if let cgImage = controller.loadImage(from: file.url) {
-                let size = CGSize(width: cgImage.width, height: cgImage.height)
-                images.append((cgImage, size))
+        let files = group.files
+        let groupID = group.id
+        context.coordinator.loadTask = Task { @MainActor in
+            var images: [(CGImage, CGSize)] = []
+            for file in files {
+                guard !Task.isCancelled else { return }
+                if let cgImage = await Self.decodePreview(from: file.url) {
+                    let size = CGSize(width: cgImage.width, height: cgImage.height)
+                    images.append((cgImage, size))
+                }
             }
-        }
 
-        guard !images.isEmpty else { return }
+            guard !Task.isCancelled, viewModel.currentGroup?.id == groupID else { return }
+            guard !images.isEmpty else { return }
 
-        nsView.loadGroup(group)
-        nsView.applyImageLayout(images: images)
+            nsView.loadGroup(group)
+            nsView.applyImageLayout(images: images)
 
-        for (index, _) in group.files.enumerated() {
-            let isVisible = viewModel.isLayerVisible(index)
-            nsView.setLayerVisibility(isVisible, at: index)
+            for (index, _) in files.enumerated() {
+                let isVisible = viewModel.isLayerVisible(index)
+                nsView.setLayerVisibility(isVisible, at: index)
+            }
         }
     }
 
@@ -72,9 +77,16 @@ struct ImageDiffView: NSViewRepresentable {
         Coordinator(showHistogram: viewModel.showHistogram)
     }
 
+    private nonisolated static func decodePreview(from url: URL) async -> CGImage? {
+        await Task.detached(priority: .userInitiated) {
+            ImageLayerController().loadPreviewImage(from: url)
+        }.value
+    }
+
     class Coordinator: NSObject {
         var showHistogram: Bool
         var lastGroupIndex: Int = -1
+        var loadTask: Task<Void, Never>?
 
         init(showHistogram: Bool) {
             self.showHistogram = showHistogram

@@ -42,27 +42,6 @@ actor FileBrowserModel {
         }
     }
 
-    func detectLivePhotoPair(for heicURL: URL) -> URL? {
-        let movURL = heicURL.deletingPathExtension().appendingPathExtension("mov")
-        if fileManager.fileExists(atPath: movURL.path) {
-            return movURL
-        }
-
-        let heicName = heicURL.deletingPathExtension().lastPathComponent
-        let movName = heicName + ".mov"
-        let parentDir = heicURL.deletingPathExtension().deletingLastPathComponent()
-        let altMovURL = parentDir.appendingPathComponent(movName)
-        if fileManager.fileExists(atPath: altMovURL.path) {
-            return altMovURL
-        }
-
-        return nil
-    }
-
-    func scanDirectoryTree(at url: URL) -> FolderNode {
-        return FolderNode(url: url)
-    }
-
     func startMonitoring(directories: [URL]) {
         stopMonitoring()
         guard !directories.isEmpty else { return }
@@ -117,7 +96,4 @@ actor FileBrowserModel {
         }
     }
 
-    var supportedExtensions: Set<String> {
-        supportedImageExtensions.union(supportedVideoExtensions)
-    }
 }
