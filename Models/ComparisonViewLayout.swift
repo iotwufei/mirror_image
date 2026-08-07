@@ -23,11 +23,11 @@ struct ComparisonViewLayout {
         case 2:
             return layoutRow(cols: 2, in: insetBounds)
         case 3:
-            return layoutColumn(rows: 3, in: insetBounds)
+            return layoutRow(cols: 3, in: insetBounds)
         case 4:
             return layoutGrid(rows: 2, cols: 2, count: actualCount, in: insetBounds)
         default:
-            return layoutColumn(rows: actualCount, in: insetBounds)
+            return layoutFitted(count: actualCount, in: insetBounds)
         }
     }
 
@@ -41,20 +41,6 @@ struct ComparisonViewLayout {
                 y: bounds.minY,
                 width: itemWidth,
                 height: bounds.height
-            )
-        }
-    }
-
-    private func layoutColumn(rows: Int, in bounds: CGRect) -> [CGRect] {
-        let totalSpacing = spacing * CGFloat(rows - 1)
-        let itemHeight = (bounds.height - totalSpacing) / CGFloat(rows)
-
-        return (0..<rows).map { row in
-            CGRect(
-                x: bounds.minX,
-                y: bounds.minY + (itemHeight + spacing) * CGFloat(row),
-                width: bounds.width,
-                height: itemHeight
             )
         }
     }
@@ -78,6 +64,14 @@ struct ComparisonViewLayout {
             }
         }
         return Array(frames.prefix(count))
+    }
+
+    private func layoutFitted(count: Int, in bounds: CGRect) -> [CGRect] {
+        let screenAspect = bounds.width / bounds.height
+        var cols = Int(round(sqrt(Double(count) * Double(screenAspect))))
+        cols = max(1, min(count, cols))
+        let rows = Int(ceil(Double(count) / Double(cols)))
+        return layoutGrid(rows: rows, cols: cols, count: count, in: bounds)
     }
 
 }
