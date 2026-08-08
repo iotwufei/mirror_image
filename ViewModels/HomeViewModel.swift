@@ -72,6 +72,21 @@ final class HomeViewModel: ObservableObject {
         return result
     }
 
+    /// Replaces the current file selection with the files from the last
+    /// comparison group, and scrolls each column to its first selected file.
+    func syncSelection(from files: [FileItem]) {
+        guard !files.isEmpty else { return }
+        let ids = Set(files.map(\.id))
+        selectedFileIDs = ids
+        selectionAnchorID = files.first?.id
+
+        for (columnIndex, column) in fileColumns.enumerated() {
+            if let firstMatch = column.files.first(where: { ids.contains($0.id) }) {
+                columnScrollPositions[columnIndex] = firstMatch.id
+            }
+        }
+    }
+
     func selectFile(_ id: UUID) {
         selectionAnchorID = id
         selectedFileIDs = [id]
@@ -167,11 +182,32 @@ final class HomeViewModel: ObservableObject {
         selectionAnchorID = id
     }
 
-    func selectAllInColumn(_ columnIndex: Int) {
-        guard columnIndex < fileColumns.count else { return }
+    func selectAllInFocusedColumn() {
+        guard case let .column(columnIndex, _) = fileListFocus,
+              columnIndex < fileColumns.count else { return }
         for file in fileColumns[columnIndex].files {
             selectedFileIDs.insert(file.id)
         }
+    }
+
+    func moveFocus(rowDelta: Int) {
+        guard case let .column(columnIndex, row) = fileListFocus,
+              columnIndex < fileColumns.count,
+              !fileColumns[columnIndex].files.isEmpty else { return }
+        let count = fileColumns[columnIndex].files.count
+        let newRow = max(0, min(count - 1, row + rowDelta))
+        fileListFocus = .column(columnIndex, newRow)
+    }
+
+    func moveFocusToNextColumn() {
+        guard !fileColumns.isEmpty else { return }
+        let currentColumn: Int
+        if case let .column(columnIndex, _) = fileListFocus {
+            currentColumn = columnIndex
+        } else {
+            currentColumn = 0
+        }
+        fileListFocus = .column((currentColumn + 1) % fileColumns.count, 0)
     }
 
     func setFilter(_ newFilter: MediaFilter) {

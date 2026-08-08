@@ -126,6 +126,9 @@ struct DiffView: View {
     }
 
     private func exitComparison() {
+        if let files = viewModel.currentGroup?.files {
+            coordinator.homeViewModel.syncSelection(from: files)
+        }
         if let window = NSApp.keyWindow, window.styleMask.contains(.fullScreen) {
             window.toggleFullScreen(nil)
         }

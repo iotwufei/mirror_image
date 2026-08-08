@@ -92,46 +92,6 @@ struct FileColumnView: View {
                 .frame(height: 80)
             }
         }
-        .focusable()
-        .onKeyPress(.space) {
-            return handleSpace() ? .handled : .ignored
-        }
-        .onKeyPress(.upArrow) {
-            moveFocus(rowDelta: -1)
-            return .handled
-        }
-        .onKeyPress(.downArrow) {
-            moveFocus(rowDelta: 1)
-            return .handled
-        }
-        .onKeyPress(.tab) {
-            moveFocusToNextColumn()
-            return .handled
-        }
-        .onKeyPress(KeyEquivalent("a")) {
-            guard NSEvent.modifierFlags.contains(.command) else { return .ignored }
-            viewModel.selectAllInColumn(columnIndex)
-            return .handled
-        }
-    }
-
-    private func handleSpace() -> Bool {
-        if viewModel.selectedFileIDs.isEmpty {
-            guard case let .column(col, row) = viewModel.fileListFocus,
-                  col == columnIndex,
-                  row < column.files.count else { return false }
-            let file = column.files[row]
-            viewModel.toggleFileSelection(file.id)
-            return true
-        } else {
-            let all = viewModel.comparisonFiles()
-            let selected = viewModel.selectedFiles
-            if !selected.isEmpty {
-                coordinator.enterComparison(allFiles: all, selectedFiles: selected)
-                return true
-            }
-            return false
-        }
     }
 
     private var scrollPositionBinding: Binding<UUID?> {
@@ -170,14 +130,4 @@ struct FileColumnView: View {
         return false
     }
 
-    private func moveFocus(rowDelta: Int) {
-        guard case let .column(col, row) = viewModel.fileListFocus, col == columnIndex else { return }
-        let newRow = max(0, min(column.files.count - 1, row + rowDelta))
-        viewModel.fileListFocus = .column(columnIndex, newRow)
-    }
-
-    private func moveFocusToNextColumn() {
-        let nextCol = (columnIndex + 1) % viewModel.fileColumns.count
-        viewModel.fileListFocus = .column(nextCol, 0)
-    }
 }

@@ -57,22 +57,6 @@ struct ContentArea: View {
                     }
                 }
             }
-            .focusable()
-            .onKeyPress(.space) {
-                return handleSpace() ? .handled : .ignored
-            }
         }
-    }
-
-    private func handleSpace() -> Bool {
-        if !viewModel.selectedFileIDs.isEmpty {
-            let all = viewModel.comparisonFiles()
-            let selected = viewModel.selectedFiles
-            if !selected.isEmpty {
-                coordinator.enterComparison(allFiles: all, selectedFiles: selected)
-                return true
-            }
-        }
-        return false
     }
 }
