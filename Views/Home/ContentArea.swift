@@ -66,9 +66,10 @@ struct ContentArea: View {
 
     private func handleSpace() -> Bool {
         if !viewModel.selectedFileIDs.isEmpty {
-            let files = viewModel.comparisonFiles()
-            if !files.isEmpty {
-                coordinator.enterComparison(allFiles: files, selectedFiles: files)
+            let all = viewModel.comparisonFiles()
+            let selected = viewModel.selectedFiles
+            if !selected.isEmpty {
+                coordinator.enterComparison(allFiles: all, selectedFiles: selected)
                 return true
             }
         }

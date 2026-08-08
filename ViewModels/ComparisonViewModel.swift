@@ -34,15 +34,11 @@ final class ComparisonViewModel: ObservableObject {
     }
 
     func setupGroups(allFiles: [FileItem], selectedFiles: [FileItem]) {
-        let groupSize = selectedFiles.count
+        let groupSize = max(selectedFiles.count, 1)
         groups = ComparisonGroup.buildGroups(from: allFiles, groupSize: groupSize)
         if let firstSelected = selectedFiles.first,
            let matchIdx = allFiles.firstIndex(where: { $0.id == firstSelected.id }) {
-            currentGroupIndex = min(matchIdx, groups.count - 1)
-            if currentGroupIndex < groups.count,
-               !groups[currentGroupIndex].files.contains(where: { $0.id == firstSelected.id }) {
-                currentGroupIndex = 0
-            }
+            currentGroupIndex = min(matchIdx / groupSize, groups.count - 1)
         } else {
             currentGroupIndex = 0
         }

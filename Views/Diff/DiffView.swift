@@ -1,11 +1,24 @@
 import SwiftUI
 import AVFoundation
 
+enum ComparisonKeyAction: Equatable {
+    case nextGroup
+    case prevGroup
+    case toggleHistogram
+    case toggleInfo
+    case toggleLayer(Int)
+    case exit
+    case togglePlayback
+    case seek(by: TimeInterval)
+    case align
+}
+
 struct DiffView: View {
     @StateObject private var viewModel = ComparisonViewModel()
     @EnvironmentObject var coordinator: AppCoordinator
     @State private var alignmentMessage: String?
     @State private var showAlignmentError = false
+    @State private var keyMonitor: Any?
 
     let allFiles: [FileItem]
     let selectedFiles: [FileItem]
@@ -21,13 +34,12 @@ struct DiffView: View {
 
                 switch mode {
                 case .image:
-                    ImageDiffView(viewModel: viewModel, onExit: exitComparison)
+                    ImageDiffView(viewModel: viewModel)
                 case .video:
                     VideoDiffView(
                         viewModel: viewModel,
                         files: allFiles,
-                        videoController: videoController,
-                        onExit: exitComparison
+                        videoController: videoController
                     )
                 }
             }
@@ -37,48 +49,10 @@ struct DiffView: View {
         .background(Color.black)
         .onAppear {
             viewModel.setupGroups(allFiles: allFiles, selectedFiles: selectedFiles)
+            installKeyMonitor()
         }
-        .onKeyPress(.space) {
-            if mode == .video {
-                viewModel.isPlaying.toggle()
-            } else {
-                viewModel.nextGroup()
-            }
-            return .handled
-        }
-        .onKeyPress(KeyEquivalent("b")) {
-            viewModel.prevGroup()
-            return .handled
-        }
-        .onKeyPress(KeyEquivalent("h")) {
-            viewModel.showHistogram.toggle()
-            return .handled
-        }
-        .onKeyPress(KeyEquivalent("i")) {
-            viewModel.showInfo.toggle()
-            return .handled
-        }
-        .onKeyPress(.escape) {
-            exitComparison()
-            return .handled
-        }
-        .onKeyPress(.leftArrow) {
-            if mode == .video {
-                videoController.seekAll(by: -5)
-            }
-            return .handled
-        }
-        .onKeyPress(.rightArrow) {
-            if mode == .video {
-                videoController.seekAll(by: 5)
-            }
-            return .handled
-        }
-        .onKeyPress(KeyEquivalent("q")) {
-            if mode == .video {
-                Task { await triggerAudioAlignment() }
-            }
-            return .handled
+        .onDisappear {
+            removeKeyMonitor()
         }
         .onChange(of: viewModel.isPlaying) { _, playing in
             if mode == .video {
@@ -156,6 +130,84 @@ struct DiffView: View {
             window.toggleFullScreen(nil)
         }
         coordinator.exitComparison()
+    }
+
+    private func installKeyMonitor() {
+        removeKeyMonitor()
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            self.handleKey(event) ? nil : event
+        }
+    }
+
+    private func removeKeyMonitor() {
+        if let keyMonitor {
+            NSEvent.removeMonitor(keyMonitor)
+            self.keyMonitor = nil
+        }
+    }
+
+    private func handleKey(_ event: NSEvent) -> Bool {
+        guard let action = Self.resolveKeyAction(
+            keyCode: event.keyCode,
+            modifiers: event.modifierFlags,
+            mode: mode
+        ) else { return false }
+
+        switch action {
+        case .nextGroup:
+            viewModel.nextGroup()
+        case .prevGroup:
+            viewModel.prevGroup()
+        case .toggleHistogram:
+            viewModel.showHistogram.toggle()
+        case .toggleInfo:
+            viewModel.showInfo.toggle()
+        case .toggleLayer(let index):
+            viewModel.toggleLayerVisibility(index: index)
+        case .exit:
+            exitComparison()
+        case .togglePlayback:
+            viewModel.isPlaying.toggle()
+        case .seek(let delta):
+            videoController.seekAll(by: delta)
+        case .align:
+            Task { await triggerAudioAlignment() }
+        }
+        return true
+    }
+
+    static func resolveKeyAction(
+        keyCode: UInt16,
+        modifiers: NSEvent.ModifierFlags,
+        mode: ComparisonMode
+    ) -> ComparisonKeyAction? {
+        let isCommand = modifiers.contains(.command)
+        switch keyCode {
+        case 49: // Space
+            if isCommand {
+                return mode == .video ? .nextGroup : nil
+            }
+            return mode == .video ? .togglePlayback : .nextGroup
+        case 11: // B
+            return .prevGroup
+        case 4: // H
+            return .toggleHistogram
+        case 34: // I
+            return .toggleInfo
+        case 18...26: // 1-9
+            return .toggleLayer(Int(keyCode) - 18)
+        case 53: // Esc
+            return .exit
+        case 123: // Left arrow
+            return mode == .video ? .seek(by: -5) : nil
+        case 124: // Right arrow
+            return mode == .video ? .seek(by: 5) : nil
+        case 12: // Q
+            if isCommand { return nil } // let Cmd+Q quit the app
+            return mode == .video ? .align : nil
+        default:
+            return nil
+        }
     }
 
     private var bottomBar: some View {

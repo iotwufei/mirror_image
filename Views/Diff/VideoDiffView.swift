@@ -5,23 +5,12 @@ struct VideoDiffView: NSViewRepresentable {
     @ObservedObject var viewModel: ComparisonViewModel
     let files: [FileItem]
     let videoController: VideoLayerController
-    let onExit: () -> Void
 
     func makeNSView(context: Context) -> ComparisonView {
         let view = ComparisonView()
 
-        view.onToggleLayerVisibility = { index in
-            viewModel.toggleLayerVisibility(index: index)
-            view.setLayerVisibility(viewModel.isLayerVisible(index), at: index)
-        }
         view.onZoomChanged = { zoom in
             viewModel.globalZoom = zoom
-        }
-        view.onToggleInfo = {
-            viewModel.showInfo.toggle()
-        }
-        view.onExit = {
-            onExit()
         }
 
         return view

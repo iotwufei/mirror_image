@@ -18,47 +18,51 @@ actor HistogramCalculator {
     }
 
     func calculate(for image: CGImage) async -> HistogramData {
-        let ciImage = CIImage(cgImage: image)
-        guard let filter = CIFilter(name: "CIAreaHistogram") else {
+        // Downsample before analysis so huge photos don't blow up memory or
+        // take forever; 1024px is far beyond histogram resolution anyway.
+        let maxDimension: CGFloat = 1024
+        let scale = min(1.0, maxDimension / CGFloat(max(image.width, image.height)))
+        let width = max(1, Int(CGFloat(image.width) * scale))
+        let height = max(1, Int(CGFloat(image.height) * scale))
+
+        var pixelData = [UInt8](repeating: 0, count: width * height * 4)
+        let bitmapInfo = CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue
+        guard let context = CGContext(
+            data: &pixelData,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: width * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: bitmapInfo
+        ) else {
             return HistogramData(luminance: [], red: [], green: [], blue: [], binCount: 256)
         }
-        filter.setValue(ciImage, forKey: kCIInputImageKey)
-        filter.setValue(CIVector(cgRect: ciImage.extent), forKey: kCIInputExtentKey)
-        filter.setValue(256, forKey: "inputCount")
-        filter.setValue(1.0, forKey: "inputScale")
-        guard let output = filter.outputImage else {
-            return HistogramData(luminance: [], red: [], green: [], blue: [], binCount: 256)
+        context.interpolationQuality = .high
+        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+
+        // premultipliedLast + byteOrder32Big yields R,G,B,A byte order.
+        var redBins = [Int](repeating: 0, count: 256)
+        var greenBins = [Int](repeating: 0, count: 256)
+        var blueBins = [Int](repeating: 0, count: 256)
+
+        var offset = 0
+        while offset < pixelData.count {
+            redBins[Int(pixelData[offset])] += 1
+            greenBins[Int(pixelData[offset + 1])] += 1
+            blueBins[Int(pixelData[offset + 2])] += 1
+            offset += 4
         }
 
-        var histogramData = [Float](repeating: 0, count: 256 * 4)
-        histogramData.withUnsafeMutableBytes { buffer in
-            ciContext.render(
-                output,
-                toBitmap: buffer.baseAddress!,
-                rowBytes: 256 * 4 * MemoryLayout<Float>.size,
-                bounds: CGRect(x: 0, y: 0, width: 256, height: 1),
-                format: .RGBAf,
-                colorSpace: CGColorSpaceCreateDeviceRGB()
-            )
-        }
-
-        var maxValue: Float = 0
-        for i in 0..<256 {
-            maxValue = max(
-                maxValue,
-                histogramData[i * 4],
-                histogramData[i * 4 + 1],
-                histogramData[i * 4 + 2]
-            )
-        }
+        let maxValue = max(redBins.max() ?? 1, greenBins.max() ?? 1, blueBins.max() ?? 1)
 
         guard maxValue > 0 else {
             return HistogramData(luminance: [], red: [], green: [], blue: [], binCount: 256)
         }
 
-        let red = (0..<256).map { histogramData[$0 * 4] / maxValue }
-        let green = (0..<256).map { histogramData[$0 * 4 + 1] / maxValue }
-        let blue = (0..<256).map { histogramData[$0 * 4 + 2] / maxValue }
+        let red = redBins.map { Float($0) / Float(maxValue) }
+        let green = greenBins.map { Float($0) / Float(maxValue) }
+        let blue = blueBins.map { Float($0) / Float(maxValue) }
 
         let luminance = (0..<256).map { i -> Float in
             return 0.2126 * red[i] + 0.7152 * green[i] + 0.0722 * blue[i]

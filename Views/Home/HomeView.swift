@@ -49,9 +49,10 @@ struct HomeView: View {
             }
             return false
         } else {
-            let files = viewModel.comparisonFiles()
-            if !files.isEmpty {
-                coordinator.enterComparison(allFiles: files, selectedFiles: files)
+            let all = viewModel.comparisonFiles()
+            let selected = viewModel.selectedFiles
+            if !selected.isEmpty {
+                coordinator.enterComparison(allFiles: all, selectedFiles: selected)
                 return true
             }
             return false

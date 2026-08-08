@@ -24,12 +24,7 @@ final class ComparisonView: NSView {
     private var needsLayerRebuild = true
     private var lastLayoutSize: CGSize = .zero
 
-    var onGroupNavigation: ((Bool) -> Void)?
-    var onToggleHistogram: (() -> Void)?
-    var onToggleLayerVisibility: ((Int) -> Void)?
-    var onExit: (() -> Void)?
     var onZoomChanged: ((CGFloat) -> Void)?
-    var onToggleInfo: (() -> Void)?
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -40,15 +35,6 @@ final class ComparisonView: NSView {
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
-    }
-
-    override var acceptsFirstResponder: Bool { true }
-
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        if window != nil {
-            window?.makeFirstResponder(self)
-        }
     }
 
     func loadGroup(_ group: ComparisonGroup) {
@@ -402,39 +388,4 @@ final class ComparisonView: NSView {
         }
     }
 
-    override func keyDown(with event: NSEvent) {
-        switch event.keyCode {
-        case 49:
-            if let onGroupNavigation {
-                onGroupNavigation(true)
-            } else {
-                super.keyDown(with: event)
-            }
-        case 11:
-            if let onGroupNavigation {
-                onGroupNavigation(false)
-            } else {
-                super.keyDown(with: event)
-            }
-        case 4:
-            if let onToggleHistogram {
-                onToggleHistogram()
-            } else {
-                super.keyDown(with: event)
-            }
-        case 34:
-            if let onToggleInfo {
-                onToggleInfo()
-            } else {
-                super.keyDown(with: event)
-            }
-        case 18...26:
-            let index = Int(event.keyCode) - 18
-            onToggleLayerVisibility?(index)
-        case 53:
-            onExit?()
-        default:
-            super.keyDown(with: event)
-        }
-    }
 }

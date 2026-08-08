@@ -3,33 +3,12 @@ import AppKit
 
 struct ImageDiffView: NSViewRepresentable {
     @ObservedObject var viewModel: ComparisonViewModel
-    let onExit: () -> Void
 
     func makeNSView(context: Context) -> ComparisonView {
         let view = ComparisonView()
 
-        view.onGroupNavigation = { forward in
-            if forward {
-                viewModel.nextGroup()
-            } else {
-                viewModel.prevGroup()
-            }
-        }
-        view.onToggleHistogram = {
-            viewModel.showHistogram.toggle()
-        }
-        view.onToggleLayerVisibility = { index in
-            viewModel.toggleLayerVisibility(index: index)
-            view.setLayerVisibility(viewModel.isLayerVisible(index), at: index)
-        }
-        view.onExit = {
-            onExit()
-        }
         view.onZoomChanged = { zoom in
             viewModel.globalZoom = zoom
-        }
-        view.onToggleInfo = {
-            viewModel.showInfo.toggle()
         }
 
         return view

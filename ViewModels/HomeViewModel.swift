@@ -46,37 +46,30 @@ final class HomeViewModel: ObservableObject {
         fileColumns.flatMap { $0.files }.count
     }
 
+    var selectedFiles: [FileItem] {
+        fileColumns.flatMap { $0.files }.filter { selectedFileIDs.contains($0.id) }
+    }
+
     var allFiles: [FileItem] {
         fileColumns.flatMap { $0.files }
     }
 
-    var interleavedFiles: [FileItem] {
-        guard !fileColumns.isEmpty else { return [] }
-        let maxCount = fileColumns.map(\.files.count).max() ?? 0
+    func comparisonFiles() -> [FileItem] {
+        let selectedColumns = fileColumns.filter { column in
+            column.files.contains(where: { selectedFileIDs.contains($0.id) })
+        }
+        guard !selectedColumns.isEmpty else { return [] }
+        if selectedColumns.count == 1 {
+            return selectedColumns[0].files
+        }
+        let maxCount = selectedColumns.map(\.files.count).max() ?? 0
         var result: [FileItem] = []
-        for i in 0..<maxCount {
-            for col in fileColumns where i < col.files.count {
-                result.append(col.files[i])
+        for row in 0..<maxCount {
+            for column in selectedColumns where row < column.files.count {
+                result.append(column.files[row])
             }
         }
         return result
-    }
-
-    var selectedColumnCount: Int {
-        var count = 0
-        for col in fileColumns {
-            if col.files.contains(where: { selectedFileIDs.contains($0.id) }) {
-                count += 1
-            }
-        }
-        return count
-    }
-
-    func comparisonFiles() -> [FileItem] {
-        if selectedColumnCount > 1 {
-            return interleavedFiles.filter { selectedFileIDs.contains($0.id) }
-        }
-        return allFiles.filter { selectedFileIDs.contains($0.id) }
     }
 
     func selectFile(_ id: UUID) {
